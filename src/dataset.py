@@ -90,3 +90,26 @@ plt.title("Long-Tail Distribution of Item Activity")
 
 plt.tight_layout()
 plt.show()
+
+# ===================
+# Rating distribution
+# ===================
+rating_counts = ratings["Rating"].value_counts().sort_index()
+
+print("\n===== RATING DISTRIBUTION =====")
+print(rating_counts)
+
+plt.figure(figsize=(7, 5))
+
+sns.countplot(
+    data=ratings,
+    x="Rating",
+    color="steelblue"
+)
+
+plt.title("Rating Distribution")
+plt.xlabel("Rating")
+plt.ylabel("Count")
+
+plt.tight_layout()
+plt.show()
