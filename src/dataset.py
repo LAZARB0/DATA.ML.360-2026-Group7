@@ -113,3 +113,38 @@ plt.ylabel("Count")
 
 plt.tight_layout()
 plt.show()
+
+#==================
+# Timespan analysis
+#==================
+ratings["Datetime"] = pd.to_datetime(
+    ratings["Timestamp"],
+    unit="s"
+)
+
+start_date = ratings["Datetime"].min()
+end_date = ratings["Datetime"].max()
+
+print("\n===== TIME SPAN =====")
+print("Start:", start_date)
+print("End:  ", end_date)
+print("Duration:", end_date - start_date)
+
+# Activity over time
+monthly_activity = (
+    ratings
+    .set_index("Datetime")
+    .resample("M")
+    .size()
+)
+
+plt.figure(figsize=(12, 5))
+
+monthly_activity.plot()
+
+plt.title("Rating Activity Over Time")
+plt.xlabel("Date")
+plt.ylabel("Number of Ratings")
+
+plt.tight_layout()
+plt.show()
