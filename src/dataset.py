@@ -148,3 +148,33 @@ plt.ylabel("Number of Ratings")
 
 plt.tight_layout()
 plt.show()
+
+# Temporal train/validation/test split
+ratings = ratings.sort_values("Timestamp")
+ratings = ratings.reset_index(drop=True)
+
+n = len(ratings)
+
+train_end = int(0.80 * n)
+val_end = int(0.90 * n)
+
+train = ratings.iloc[:train_end]
+validation = ratings.iloc[train_end:val_end]
+test = ratings.iloc[val_end:]
+
+#Report
+print("\n===== TEMPORAL SPLIT =====")
+print("Train size:", len(train))
+print("Validation size:", len(validation))
+print("Test size:", len(test))
+
+print("\nTrain period:")
+print(train["Datetime"].min(), "->", train["Datetime"].max())
+
+print("\nValidation period:")
+print(validation["Datetime"].min(), "->",
+      validation["Datetime"].max())
+
+print("\nTest period:")
+print(test["Datetime"].min(), "->",
+      test["Datetime"].max())
