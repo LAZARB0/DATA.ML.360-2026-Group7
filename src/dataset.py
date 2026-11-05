@@ -50,19 +50,18 @@ print(f"Density: {density:.4%}")
 # =====================
 user_interactions = ratings.groupby("UserID").size()
 
-print("\n===== USER INTERACTIONS =====")
-print(user_interactions.describe())
+num_bins = 50
 
-# Long-tail plot: users
 plt.figure(figsize=(10, 5))
 
-user_interactions.sort_values(
-    ascending=False
-).reset_index(drop=True).plot()
+plt.hist(
+    user_interactions,
+    bins=num_bins,
+    edgecolor="black"
+)
 
-plt.yscale("log")
-plt.xlabel("Users (sorted by activity)")
-plt.ylabel("Number of ratings (log scale)")
+plt.xlabel("Number of Ratings per User")
+plt.ylabel("Number of Users")
 plt.title("Long-Tail Distribution of User Activity")
 
 plt.tight_layout()
@@ -81,11 +80,18 @@ plt.figure(figsize=(10, 5))
 
 item_interactions.sort_values(
     ascending=False
-).reset_index(drop=True).plot()
+).reset_index(drop=True)
 
-plt.yscale("log")
-plt.xlabel("Items (sorted by activity)")
-plt.ylabel("Number of ratings (log scale)")
+num_bins = 50
+
+plt.hist(
+    user_interactions,
+    bins=num_bins,
+    edgecolor="black"
+)
+
+plt.xlabel("Number of Ratings per Item")
+plt.ylabel("Number of Items")
 plt.title("Long-Tail Distribution of Item Activity")
 
 plt.tight_layout()
@@ -140,11 +146,17 @@ monthly_activity = (
 
 plt.figure(figsize=(12, 5))
 
-monthly_activity.plot()
+plt.bar(
+    monthly_activity.index,
+    monthly_activity.values,
+    width=20
+)
 
 plt.title("Rating Activity Over Time")
 plt.xlabel("Date")
 plt.ylabel("Number of Ratings")
+
+plt.xticks(rotation=45)
 
 plt.tight_layout()
 plt.show()
