@@ -1,4 +1,7 @@
 results/
+ml-1m/movies.dat
+ml-1m/ratings.dat
+ml-1m/users.dat
 
 __pycache__/
 .DS_Store
