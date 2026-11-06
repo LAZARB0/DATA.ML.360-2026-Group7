@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
@@ -14,6 +15,8 @@ parser.add_argument("--data-dir", default="ml-1m")
 args = parser.parse_args()
 
 ratings, users, movies = load_data(args.data_dir)
+
+Path("results").mkdir(exist_ok=True)
 
 # ==============================
 # Basic dataset characterization
@@ -50,7 +53,7 @@ plt.ylabel("Number of Users")
 plt.title("Long-Tail Distribution of User Activity")
 
 plt.tight_layout()
-plt.show()
+plt.savefig("results/user_activity.png")
 
 # =====================
 # Interactions per item
@@ -80,7 +83,7 @@ plt.ylabel("Number of Items")
 plt.title("Long-Tail Distribution of Item Activity")
 
 plt.tight_layout()
-plt.show()
+plt.savefig("results/item_activity.png")
 
 # ===================
 # Rating distribution
@@ -103,7 +106,7 @@ plt.xlabel("Rating")
 plt.ylabel("Count")
 
 plt.tight_layout()
-plt.show()
+plt.savefig("results/rating_distribution.png")
 
 #==================
 # Timespan analysis
@@ -144,7 +147,7 @@ plt.ylabel("Number of Ratings")
 plt.xticks(rotation=45)
 
 plt.tight_layout()
-plt.show()
+plt.savefig("results/rating_activity.png")
 
 # Temporal train/validation/test split
 ratings = ratings.sort_values("Timestamp")
