@@ -1,34 +1,19 @@
+import argparse
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from load_data import load_data
+
 plt.style.use("seaborn-v0_8")
 
-# =================
-# Load MovieLens 1M
-# =================
-ratings = pd.read_csv(
-    "ml-1m/ratings.dat",
-    sep="::",
-    engine="python",
-    names=["UserID", "MovieID", "Rating", "Timestamp"]
-)
+parser = argparse.ArgumentParser()
+parser.add_argument("--data-dir", default="ml-1m")
+args = parser.parse_args()
 
-users = pd.read_csv(
-    "ml-1m/users.dat",
-    sep="::",
-    engine="python",
-    names=["UserID", "Gender", "Age", "Occupation", "ZipCode"]
-)
-
-movies = pd.read_csv(
-    "ml-1m/movies.dat",
-    sep="::",
-    engine="python",
-    encoding="latin-1",
-    names=["MovieID", "Title", "Genres"]
-)
+ratings, users, movies = load_data(args.data_dir)
 """
 # ==============================
 # Basic dataset characterization

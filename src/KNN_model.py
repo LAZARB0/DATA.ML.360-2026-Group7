@@ -1,26 +1,26 @@
 
 # %% Import libraries
+import argparse
+
 import pandas as pd
 import numpy as np
 from scipy.sparse import csr_matrix
 from sklearn.neighbors import NearestNeighbors
 from pathlib import Path
-from zipfile import ZipFile
+
+from load_data import load_data
 
 
 # %% Load MovieLens 1M
-def load_movielens(zip_path):
-    with ZipFile(zip_path) as archive:
-        ratings = pd.read_csv(
-            archive.open('ml-1m/ratings.dat'),
-            sep='::', engine='python',
-            names=['user_id', 'item_id', 'rating', 'timestamp'],
-        )
-        movies = pd.read_csv(
-            archive.open('ml-1m/movies.dat'),
-            sep='::', engine='python', encoding='latin1',
-            names=['item_id', 'title', 'genres'],
-        )
+def load_movielens(data_dir):
+    ratings, _users, movies = load_data(data_dir)
+    ratings = ratings.rename(columns={
+        'UserID': 'user_id', 'MovieID': 'item_id',
+        'Rating': 'rating', 'Timestamp': 'timestamp',
+    })
+    movies = movies.rename(columns={
+        'MovieID': 'item_id', 'Title': 'title', 'Genres': 'genres',
+    })
     return ratings, movies
 
 
@@ -253,8 +253,7 @@ def main(data_path=None, k_values=(10, 20, 50, 100, 200, 400),
          similarities=('cosine', 'pearson'), min_user_ratings=20,
          min_item_ratings=20, positive_threshold=4, min_common_users=2):
     if data_path is None:
-        base = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
-        data_path = base / 'ml-1m.zip'
+        data_path = 'ml-1m'
     ratings, movies = load_movielens(data_path)
     train, validation, test = temporal_split(ratings)
     print('train / validation / test rows:', len(train), len(validation), len(test), flush=True)
@@ -305,4 +304,7 @@ def main(data_path=None, k_values=(10, 20, 50, 100, 200, 400),
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data-dir', default='ml-1m')
+    args = parser.parse_args()
+    main(data_path=args.data_dir)
