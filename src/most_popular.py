@@ -15,6 +15,18 @@ args = parser.parse_args()
 
 ratings, users, movies = load_data(args.data_dir)
 
+# Temporal train/validation/test split
+ratings = ratings.sort_values("Timestamp")
+ratings = ratings.reset_index(drop=True)
+
+n = len(ratings)
+
+train_end = int(0.80 * n)
+val_end = int(0.90 * n)
+
+train = ratings.iloc[:train_end]
+validation = ratings.iloc[train_end:val_end]
+test = ratings.iloc[val_end:]
 ####################################################
 # Most popular
 
@@ -142,19 +154,6 @@ def evaluate(ranking, fit_data, heldout, catalogue_size, k=K):
 # Run
 catalogue_size = movies["MovieID"].nunique() # all movies in movies.dat
 rows = []
-
-# Validation: popularity from train only TODO: remove validations only part
-rankings = most_popular_rankings(train)
-for name, ranking in rankings.items():
-    top10_titles = movies.set_index("MovieID").loc[ranking[:10], "Title"].tolist()
-    print(f"Top 10 - {name}:") # TODO: Remove movie prints
-    for title in top10_titles:
-        print(title)
-    print("-----------------------------------")
-    row = evaluate(ranking, train, validation, catalogue_size)
-    row["Split"] = "validation"
-    row["Variant"] = name
-    rows.append(row)
 
 # Test: popularity from train + validation -> fit on train + validation, evaluated on test
 fit_data = pd.concat([train, validation], ignore_index=True)
