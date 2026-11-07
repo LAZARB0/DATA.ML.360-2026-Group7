@@ -6,7 +6,9 @@ Repository for DATA.ML.360 course project
 Start by pulling the source code from git. Move to project folder and create a virtual environment:
 ```bash
 python -m venv .venv
+python -m pip install numpy pandas scipy scikit-learn
 ```
+Place `ml-1m.zip` beside `KNN_model.py`. The archive must contain `ml-1m/ratings.dat` and `ml-1m/movies.dat`; extraction is unnecessary.
 
 Activate venv with:
 
