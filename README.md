@@ -6,10 +6,7 @@ Repository for DATA.ML.360 course project
 Start by pulling the source code from git. Move to project folder and create a virtual environment:
 ```bash
 python -m venv .venv
-python -m pip install numpy pandas scipy scikit-learn
 ```
-Place `ml-1m.zip` beside `KNN_model.py`. The archive must contain `ml-1m/ratings.dat` and `ml-1m/movies.dat`; extraction is unnecessary.
-
 Activate venv with:
 
 Windows
@@ -23,7 +20,7 @@ source .venv\bin\activate
 
 Install dependencies:
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r src/equirements.txt
 ```
 
 Download MovieLens 1M dataset and unzip into ml-1m folder. <https://grouplens.org/datasets/movielens/1m/>
@@ -37,4 +34,3 @@ After setting up code, venv, dependencies and dataset the project can be run usi
 ```bash
 python run_all.py --data-dir ml-1m
 ```
-
