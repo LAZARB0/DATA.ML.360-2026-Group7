@@ -20,7 +20,7 @@ source .venv\bin\activate
 
 Install dependencies:
 ```bash
-python -m pip install -r src/equirements.txt
+python -m pip install -r src/requirements.txt
 ```
 
 Download MovieLens 1M dataset and unzip into ml-1m folder. <https://grouplens.org/datasets/movielens/1m/>
