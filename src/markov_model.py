@@ -4,19 +4,14 @@ from math import log2
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from load_data import load_data
-
-plt.style.use("seaborn-v0_8")
-
 
 K = 10
 POSITIVE_THRESHOLD = 4
 
 
-# Data load 
+# Data load
 parser = argparse.ArgumentParser()
 parser.add_argument("--data-dir", default="ml-1m")
 args = parser.parse_args()
@@ -38,7 +33,7 @@ test = ratings.iloc[val_end:]
 
 
 # Build Markov model
-def build_markov_model(data):
+def build_markov_model(data, min_count=1):
 
     data = data.sort_values(
         ["UserID", "Timestamp"]
@@ -55,9 +50,6 @@ def build_markov_model(data):
 
     for sequence in user_sequences:
 
-        if len(sequence) < 2:
-            continue
-
         for i in range(len(sequence) - 1):
 
             current_item = sequence[i]
@@ -69,11 +61,20 @@ def build_markov_model(data):
 
     for item, transitions in transition_counts.items():
 
-        total = sum(transitions.values())
+        filtered = {
+            nxt: cnt
+            for nxt, cnt in transitions.items()
+            if cnt >= min_count
+        }
+
+        if not filtered:
+            continue
+
+        total = sum(filtered.values())
 
         transition_probs[item] = {
-            next_item: count / total
-            for next_item, count in transitions.items()
+            nxt: cnt / total
+            for nxt, cnt in filtered.items()
         }
 
     return transition_probs
@@ -131,8 +132,6 @@ def catalogue_coverage(recommendations, catalogue_size):
 
     return len(recommended_items) / catalogue_size
 
-# Validation model
-transition_probs = build_markov_model(train)
 
 popular_items = (
     train["MovieID"]
@@ -231,6 +230,17 @@ def evaluate_markov(
 
     n = len(precisions)
 
+    if len(precisions) == 0:
+        return {
+            "Precision@10": 0.0,
+            "Recall@10": 0.0,
+            "NDCG@10": 0.0,
+            "Coverage": 0.0,
+            "Evaluated users": 0,
+            "Skipped users": heldout["UserID"].nunique(),
+            "UserNDCGs": []
+        }
+
     return {
         "Precision@10": np.mean(precisions),
         "Recall@10": np.mean(recalls),
@@ -242,16 +252,110 @@ def evaluate_markov(
         "Evaluated users": n,
         "Skipped users":
             heldout["UserID"].nunique() - n,
+        "UserNDCGs": ndcgs,
     }
 
-# Final model: Train + Validation
+def bootstrap_ci(scores, n_boot=1000):
+
+    means = []
+
+    scores = np.array(scores)
+
+    for _ in range(n_boot):
+
+        sample = np.random.choice(
+            scores,
+            size=len(scores),
+            replace=True
+        )
+
+        means.append(sample.mean())
+
+    lower = np.percentile(means, 2.5)
+    upper = np.percentile(means, 97.5)
+
+    return lower, upper
+
+catalogue_size = (
+    movies["MovieID"]
+    .nunique()
+)
+
+# ==================================================
+# Hyperparameter tuning (validation only)
+# ==================================================
+
+K_VALUES = [5, 10, 20]
+MIN_COUNTS = [1, 3, 5]
+
+tuning_rows = []
+
+for k in K_VALUES:
+    for min_count in MIN_COUNTS:
+
+        transition_probs = build_markov_model(
+            train,
+            min_count=min_count
+        )
+
+        popular_items = (
+            train["MovieID"]
+            .value_counts()
+            .index
+            .tolist()
+        )
+
+        result = evaluate_markov(
+            train,
+            validation,
+            catalogue_size,
+            k=k
+        )
+
+        result["K"] = k
+        result["MinCount"] = min_count
+
+        tuning_rows.append(result)
+
+tuning_results = pd.DataFrame(tuning_rows)
+
+print("\n===== HYPERPARAMETER TUNING =====")
+print(
+    tuning_results[
+        ["K", "MinCount",
+         "Precision@10",
+         "Recall@10",
+         "NDCG@10"]
+    ]
+    .sort_values("NDCG@10", ascending=False)
+    .round(4)
+    .to_string(index=False)
+)
+
+best_row = tuning_results.loc[
+    tuning_results["NDCG@10"].idxmax()
+]
+
+best_k = int(best_row["K"])
+best_min_count = int(best_row["MinCount"])
+
+print("\nBest parameters")
+print(f"K = {best_k}")
+print(f"MinCount = {best_min_count}")
+
+
+# ==================================================
+# Final model (train + validation)
+# ==================================================
+
 fit_data = pd.concat(
     [train, validation],
     ignore_index=True
 )
 
 transition_probs = build_markov_model(
-    fit_data
+    fit_data,
+    min_count=best_min_count
 )
 
 popular_items = (
@@ -261,24 +365,226 @@ popular_items = (
     .tolist()
 )
 
-catalogue_size = (
-    movies["MovieID"]
-    .nunique()
-)
-
-# Final evaluation on test
-row = evaluate_markov(
+final_result = evaluate_markov(
     fit_data,
     test,
     catalogue_size,
-    k=K
+    k=best_k
 )
 
-results = pd.DataFrame([row])
+print("\n===== FINAL TEST RESULTS =====")
 
-print("\n===== MARKOV CHAIN RESULTS =====")
 print(
-    results
-    .round(6)
+    pd.DataFrame([final_result])
+    .drop(columns=["UserNDCGs"])
+    .round(4)
+    .to_string(index=False)
+)
+
+
+# ==================================================
+# Confidence interval
+# ==================================================
+if len(final_result["UserNDCGs"]) > 0:
+    lower, upper = bootstrap_ci(
+        final_result["UserNDCGs"]
+    )
+
+print(
+    f"\nNDCG@10 = {final_result['NDCG@10']:.6f}"
+)
+
+print(
+    f"95% CI = [{lower:.6f}, {upper:.6f}]"
+)
+
+
+# ==================================================
+# User activity breakdown
+# ==================================================
+
+user_activity = train.groupby(
+    "UserID"
+).size()
+
+median_activity = user_activity.median()
+
+low_users = set(
+    user_activity[
+        user_activity <= median_activity
+    ].index
+)
+
+high_users = set(
+    user_activity[
+        user_activity > median_activity
+    ].index
+)
+
+test_low = test[
+    test["UserID"].isin(low_users)
+]
+
+test_high = test[
+    test["UserID"].isin(high_users)
+]
+
+low_result = evaluate_markov(
+    fit_data,
+    test_low,
+    catalogue_size,
+    k=best_k
+)
+
+high_result = evaluate_markov(
+    fit_data,
+    test_high,
+    catalogue_size,
+    k=best_k
+)
+
+
+# ==================================================
+# Early / Late test period breakdown
+# ==================================================
+
+mid_timestamp = test["Timestamp"].median()
+
+test_early = test[
+    test["Timestamp"] <= mid_timestamp
+]
+
+test_late = test[
+    test["Timestamp"] > mid_timestamp
+]
+
+early_result = evaluate_markov(
+    fit_data,
+    test_early,
+    catalogue_size,
+    k=best_k
+)
+
+late_result = evaluate_markov(
+    fit_data,
+    test_late,
+    catalogue_size,
+    k=best_k
+)
+
+
+# ==================================================
+# Disaggregated results table
+# ==================================================
+
+disaggregated = pd.DataFrame([
+
+    {
+        "Model": "Markov Chain",
+        "Breakdown": "User activity",
+        "Group": "Low",
+        "Definition": f"<= {median_activity:.0f} train ratings",
+        "Precision@10": low_result["Precision@10"],
+        "Recall@10": low_result["Recall@10"],
+        "NDCG@10": low_result["NDCG@10"],
+        "Coverage": low_result["Coverage"],
+        "Evaluated users": low_result["Evaluated users"],
+    },
+
+    {
+        "Model": "Markov Chain",
+        "Breakdown": "User activity",
+        "Group": "High",
+        "Definition": f"> {median_activity:.0f} train ratings",
+        "Precision@10": high_result["Precision@10"],
+        "Recall@10": high_result["Recall@10"],
+        "NDCG@10": high_result["NDCG@10"],
+        "Coverage": high_result["Coverage"],
+        "Evaluated users": high_result["Evaluated users"],
+    },
+
+    {
+        "Model": "Markov Chain",
+        "Breakdown": "Test period",
+        "Group": "Early",
+        "Definition": "First half of test period",
+        "Precision@10": early_result["Precision@10"],
+        "Recall@10": early_result["Recall@10"],
+        "NDCG@10": early_result["NDCG@10"],
+        "Coverage": early_result["Coverage"],
+        "Evaluated users": early_result["Evaluated users"]
+    },
+
+    {
+        "Model": "Markov Chain",
+        "Breakdown": "Test period",
+        "Group": "Late",
+        "Definition": "Second half of test period",
+        "Precision@10": late_result["Precision@10"],
+        "Recall@10": late_result["Recall@10"],
+        "NDCG@10": late_result["NDCG@10"],
+        "Coverage": late_result["Coverage"],
+        "Evaluated users": late_result["Evaluated users"]
+    }
+])
+
+print("\n===== DISAGGREGATED RESULTS =====")
+
+print(
+    disaggregated
+    .round(4)
+    .to_string(index=False)
+)
+
+
+# ==================================================
+# Sparsity ablation
+# ==================================================
+
+ablation_rows = []
+
+for fraction, train_subset in [
+    ("100%", train),
+    ("50%", train.sample(frac=0.5, random_state=42)),
+    ("20%", train.sample(frac=0.2, random_state=42))
+]:
+
+    transition_probs = build_markov_model(
+        train_subset,
+        min_count=best_min_count
+    )
+
+    popular_items = (
+        train_subset["MovieID"]
+        .value_counts()
+        .index
+        .tolist()
+    )
+
+    result = evaluate_markov(
+        train_subset,
+        validation,
+        catalogue_size,
+        k=best_k
+    )
+
+    ablation_rows.append({
+        "Training Fraction": fraction,
+        "Precision@10": result["Precision@10"],
+        "Recall@10": result["Recall@10"],
+        "NDCG@10": result["NDCG@10"],
+        "Coverage": result["Coverage"],
+        "Evaluated users": result["Evaluated users"],
+    })
+
+ablation_results = pd.DataFrame(
+    ablation_rows
+)
+
+print("\n===== SPARSITY ABLATION =====")
+
+print(
+    ablation_results
+    .round(4)
     .to_string(index=False)
 )
