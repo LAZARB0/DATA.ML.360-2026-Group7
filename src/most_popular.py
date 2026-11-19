@@ -120,7 +120,7 @@ def evaluate(ranking, fit_data, heldout, catalogue_size, k=K):
 
     precisions, recalls, ndcgs = [], [], []
     all_recommendations = []
-
+    print(relevant_by_user)
     for user, relevant in relevant_by_user.items():
         seen = seen_by_user.get(user, set())
         relevant = relevant - seen # already seen movies can't be hits
