@@ -255,7 +255,9 @@ def evaluate_markov(
         "UserNDCGs": ndcgs,
     }
 
-def bootstrap_ci(scores, n_boot=1000):
+def bootstrap_ci(scores, n_boot=1000, seed=42):
+
+    rng = np.random.default_rng(seed)
 
     means = []
 
@@ -263,7 +265,7 @@ def bootstrap_ci(scores, n_boot=1000):
 
     for _ in range(n_boot):
 
-        sample = np.random.choice(
+        sample = rng.choice(
             scores,
             size=len(scores),
             replace=True
@@ -387,15 +389,16 @@ print(
 # ==================================================
 if len(final_result["UserNDCGs"]) > 0:
     lower, upper = bootstrap_ci(
-        final_result["UserNDCGs"]
-    )
+        final_result["UserNDCGs"],
+        seed=42
+    )   
 
 print(
-    f"\nNDCG@10 = {final_result['NDCG@10']:.6f}"
+    f"\nNDCG@10 = {final_result['NDCG@10']:.4f}"
 )
 
 print(
-    f"95% CI = [{lower:.6f}, {upper:.6f}]"
+    f"95% CI = [{lower:.4f}, {upper:.4f}]"
 )
 
 
