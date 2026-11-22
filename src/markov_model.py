@@ -141,11 +141,15 @@ popular_items = (
 )
 
 # Recommendation function
-def recommend(last_item, k=10):
+def recommend(last_item, seen_items, k=10):
 
     if last_item not in transition_probs:
 
-        return popular_items[:k]
+        return [
+            item
+            for item in popular_items
+            if item not in seen_items
+        ][:k]
 
     candidates = transition_probs[last_item]
 
@@ -155,7 +159,13 @@ def recommend(last_item, k=10):
         reverse=True
     )
 
-    return [item for item, _ in ranked[:k]]
+    recommendations = [
+        item
+        for item, _ in ranked
+        if item not in seen_items
+    ]
+
+    return recommendations[:k]
 
 # Evaluation
 def evaluate_markov(
@@ -193,10 +203,13 @@ def evaluate_markov(
         if history is None or len(history) == 0:
             continue
 
+        seen_items = set(history)
+
         last_item = history[-1]
 
         recommended = recommend(
             last_item,
+            seen_items,
             k
         )
 
