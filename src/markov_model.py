@@ -265,6 +265,8 @@ def evaluate_markov(
         "Evaluated users": n,
         "Skipped users":
             heldout["UserID"].nunique() - n,
+        "UserPrecisions": precisions,
+        "UserRecalls": recalls,
         "UserNDCGs": ndcgs,
     }
 
@@ -387,13 +389,45 @@ final_result = evaluate_markov(
     k=best_k
 )
 
+precision_lower, precision_upper = bootstrap_ci(
+    final_result["UserPrecisions"],
+    seed=42
+)
+
+recall_lower, recall_upper = bootstrap_ci(
+    final_result["UserRecalls"],
+    seed=42
+)
+
+ndcg_lower, ndcg_upper = bootstrap_ci(
+    final_result["UserNDCGs"],
+    seed=42
+)
+
 print("\n===== FINAL TEST RESULTS =====")
 
 print(
     pd.DataFrame([final_result])
-    .drop(columns=["UserNDCGs"])
+    .drop(columns=["UserNDCGs", "UserPrecisions", "UserRecalls"])
     .round(4)
     .to_string(index=False)
+)
+
+print("\n===== 95% CONFIDENCE INTERVALS =====")
+
+print(
+    f"Precision@10 = {final_result['Precision@10']:.4f} "
+    f"[{precision_lower:.4f}, {precision_upper:.4f}]"
+)
+
+print(
+    f"Recall@10 = {final_result['Recall@10']:.4f} "
+    f"[{recall_lower:.4f}, {recall_upper:.4f}]"
+)
+
+print(
+    f"NDCG@10 = {final_result['NDCG@10']:.4f} "
+    f"[{ndcg_lower:.4f}, {ndcg_upper:.4f}]"
 )
 
 
