@@ -4,10 +4,12 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from pathlib import Path
 from zipfile import ZipFile
+import argparse
 from load_data import load_data
 
 
 # %% Load MovieLens 1M
+
 def load_movielens(data_dir):
     ratings, _users, movies = load_data(data_dir)
     ratings = ratings.rename(columns={
@@ -18,7 +20,6 @@ def load_movielens(data_dir):
         'MovieID': 'item_id', 'Title': 'title', 'Genres': 'genres',
     })
     return ratings, movies
-
 
 # %% Mean-centered user-based kNN
 class UserBasedKNN:
@@ -297,7 +298,7 @@ def main(argv=None):
     import sys
     parser = argparse.ArgumentParser(description=__doc__)
     base = Path(__file__).resolve().parent if '__file__' in globals() else Path.cwd()
-    parser.add_argument('--data', type=Path, default=base/'ml-1m.zip')
+    parser.add_argument("--data", "--data-dir",dest="data", type=Path, default=base/'ml-1m.zip')
     parser.add_argument('--seed', type=int, default=66)
     parser.add_argument('--bootstrap', type=int, default=2000)
     # Notebook cells inherit kernel arguments such as --f=<connection file>.

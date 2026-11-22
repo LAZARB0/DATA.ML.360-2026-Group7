@@ -8,7 +8,12 @@ args = parser.parse_args()
 
 PART_1 = ["src/load_data.py", "src/most_popular.py", "src/KNN_item_based_model.py"]
 PART_2 = ["src/KNN_user_based_model.py", "src/hybrid.py", "src/markov_model.py"]
+Comparison = ["src/compare_models_seed50.py"]
 
 for script in PART_2:
     print(f"\n===== {script} =====", flush=True)
     subprocess.run([sys.executable, script, "--data-dir", args.data_dir])
+
+for script in Comparison:
+    print(f"\n===== {script} =====", flush=True)
+    subprocess.run([sys.executable, script, "--data", args.data_dir])
