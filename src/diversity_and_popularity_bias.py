@@ -6,6 +6,9 @@ from scipy.sparse import csr_matrix
 from implicit.bpr import BayesianPersonalizedRanking   # pip install implicit
 from load_data import load_data
 import argparse
+import matplotlib
+import matplotlib.pyplot as plt
+from pathlib import Path
 
 pd.set_option("display.width", 200)
 
@@ -154,37 +157,14 @@ class HybridRecommender:
         top = np.flip(np.argsort(scores))[:n]
         return top, scores[top]
 
-
-
 BEST_FACTORS = 100 
 BEST_REGULARIZATION = 0.1
 BEST_ALPHA = 1.0
 SEED = 67
 
-
 model = HybridRecommender(factors=BEST_FACTORS, regularization=BEST_REGULARIZATION,
                           alpha=BEST_ALPHA, random_state=SEED,
                           show_progress=False).fit(train, movies)
-
-# test candidates
-positions, cand_scores = model.candidates(1)
-print(model.movie_ids[positions[:10]].tolist() == model.recommend(1))
-
-def genre_vectors(movies):
-    indexed = movies.sort_values("MovieID").set_index("MovieID")
-    genre_df = indexed["Genres"].str.get_dummies(sep="|")
-    genres = genre_df.to_numpy(dtype=float)
-    print(genres.shape)    # (3883, 18)
-    print(genres[0])       # Toy Story1 -> anim, comedy, child
-    lengths = np.linalg.norm(genres, axis=1, keepdims=True) # sqrt(number of genres)
-    print(lengths)
-    unit = genres / lengths # each value in a row is divided by that row's length 
-    return genres, unit
-
-# test genre_vectors
-genres, unit = genre_vectors(movies)
-
-similarity = unit[positions] @ unit[positions].T
 
 # Metrics for one user
 def precision_at_k(recommended, relevant, k):
@@ -217,3 +197,75 @@ def catalogue_coverage(all_recommendations, catalogue_size):
     for recs in all_recommendations:
         unique.update(recs)
     return len(unique) / catalogue_size
+
+def genre_vectors(movies):
+    indexed = movies.sort_values("MovieID").set_index("MovieID")
+    genre_df = indexed["Genres"].str.get_dummies(sep="|")
+    genres = genre_df.to_numpy(dtype=float)
+    lengths = np.linalg.norm(genres, axis=1, keepdims=True) # sqrt(number of genres)
+    unit = genres / lengths # each value in a row is divided by that row's length 
+    return genres, unit
+
+def mmr_rerank(positions, scores, unit, lam, k=10):
+    # scale the scores
+    minimum, maximum = np.min(scores), np.max(scores) 
+    if maximum == minimum: 
+        relevance = np.zeros(len(scores))
+    else:
+        relevance = (scores - minimum) / (maximum - minimum)
+
+    similarity = unit[positions] @ unit[positions].T    
+    selected = []
+    max_sim = np.zeros(len(positions)) # nothing picked -> no redundancy
+    for _ in range(k):
+        mmr = lam * relevance - (1 - lam) * max_sim
+        mmr[selected] = -np.inf # same pick can't come twice -> already picked similarity score=-inf
+        best = np.argmax(mmr) # best maximising
+        selected.append(best)
+        max_sim = np.maximum(max_sim, similarity[best]) # update the redundancy     
+
+    return positions[selected]
+
+def intra_list_diversity(list_positions, unit):
+    """measures how different recommended items are from one another with in a user's list
+    average pairwise cosine distance"""
+     
+    similarity = unit[list_positions] @ unit[list_positions].T # similarity matrix    
+    distance = 1 - similarity
+    pairs = np.triu_indices(len(list_positions), k=1) # average over all PAIRS (not the diagonal, not counting each pair twice)
+
+    return np.mean(distance[pairs])
+
+def gini(exposure):
+    """do a few movies get almost all the recommendations, or are recommendations
+    spread across many movies"""
+    sorted_values = np.sort(exposure) # smallest to largest
+    n = len(sorted_values)
+    # G = Σ (2i − n − 1) × xᵢ / (n × Σ xᵢ) for i = 1 … n
+    total = 0
+    for i in range(n):
+        total += (2*(i+1)-n-1)*sorted_values[i]
+    if np.sum(sorted_values) == 0:
+        return 0
+    G = total / (n*np.sum(sorted_values))
+    return G
+
+def genre_distribution(movie_positions, genres):
+    # calibration error uses
+    genre_rows = genres[movie_positions]
+    n_genres = np.count_nonzero(genre_rows, axis=1, keepdims=True) # each row divided by its number of genres
+    weighted = genre_rows / n_genres
+    totals = weighted.sum(axis=0)
+
+    return totals / totals.sum()
+
+def calibration_error(p, list_positions, genres, a=0.01):
+    """does the list's genre mix match the user's taste
+    0=the list has exactly same genre, higher: the list over-represents some genres,
+    misses others the user likes"""
+    q = genre_distribution(list_positions, genres)
+    q = (1-a)*q+a*p # q = (1 - a) * q + a * p
+    mask = p > 0  # KL over genres where p > 0
+    return np.sum(p[mask] * np.log(p[mask] / q[mask]))
+
+

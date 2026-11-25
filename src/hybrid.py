@@ -182,7 +182,6 @@ def catalogue_coverage(all_recommendations, catalogue_size):
 def evaluate(model, heldout, k=10):
     relevant_by_user = (heldout[heldout["Rating"] >= model.positive_threshold]
                         .groupby("UserID")["MovieID"].apply(set))
-
     precisions, recalls, ndcgs = [], [], []
     all_recommendations = []
     per_user = []
