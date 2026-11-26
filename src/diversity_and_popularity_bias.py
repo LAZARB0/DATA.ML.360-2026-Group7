@@ -12,10 +12,6 @@ from pathlib import Path
 
 pd.set_option("display.width", 200)
 
-RUN_TUNING = True # 12 tuning settings on validation + validation breakdowns
-RUN_TEST = True # final test run with the selected settings
-RUN_SPARSITY = True # sparsity ablation: 100% / 50% / 20% of the training data
-
 # Data load
 parser = argparse.ArgumentParser()
 parser.add_argument("--data-dir", default="ml-1m")
@@ -192,12 +188,6 @@ def ndcg_at_k(recommended, relevant, k):
     return dcg / ideal
 
 
-def catalogue_coverage(all_recommendations, catalogue_size):
-    unique = set()
-    for recs in all_recommendations:
-        unique.update(recs)
-    return len(unique) / catalogue_size
-
 def genre_vectors(movies):
     indexed = movies.sort_values("MovieID").set_index("MovieID")
     genre_df = indexed["Genres"].str.get_dummies(sep="|")
@@ -251,7 +241,7 @@ def gini(exposure):
     return G
 
 def genre_distribution(movie_positions, genres):
-    # calibration error uses
+    # calibration error use
     genre_rows = genres[movie_positions]
     n_genres = np.count_nonzero(genre_rows, axis=1, keepdims=True) # each row divided by its number of genres
     weighted = genre_rows / n_genres
@@ -269,3 +259,102 @@ def calibration_error(p, list_positions, genres, a=0.01):
     return np.sum(p[mask] * np.log(p[mask] / q[mask]))
 
 
+LAMBDAS = [round(x, 1) for x in np.arange(0.0, 1.01, 0.1)] # .1, .2, .3, ..., 1.
+
+
+def evaluate_mmr(model, heldout, history_data, genres, unit, lambdas=LAMBDAS, k=10):
+    # relevant movies
+    relevant_by_user = (heldout[heldout["Rating"] >= model.positive_threshold]
+                        .groupby("UserID")["MovieID"].apply(set))
+    
+    # each user's history for calibration
+    positive_history = history_data[history_data["Rating"] >= model.positive_threshold]
+    history_positions = {user: np.searchsorted(model.movie_ids, movie_ids.to_numpy())
+                         for user, movie_ids in positive_history.groupby("UserID")["MovieID"]}
+
+    # empty result lists and an exposure array for every lambda
+    results = {lam: {"P": [], "R": [], "NDCG": [], "ILD": [], "CE": []} for lam in lambdas}
+    exposure = {lam: np.zeros(len(model.movie_ids)) for lam in lambdas}
+
+    # every user, every lambda
+    for user, relevant in relevant_by_user.items():
+        relevant = relevant - model.seen.get(user, set()) # already seen 
+        if not relevant:
+            continue
+
+        positions, scores = model.candidates(user)           
+        p = (genre_distribution(history_positions[user], genres) # top 100 candidates
+             if user in history_positions else None) # None = no positive history
+
+        # for each lambda MMR picks the final 10 movies
+        for lam in lambdas:
+            list_positions = mmr_rerank(positions, scores, unit, lam, k)
+            recommended = model.movie_ids[list_positions].tolist()
+
+            r = results[lam]
+            r["P"].append(precision_at_k(recommended, relevant, k))
+            r["R"].append(recall_at_k(recommended, relevant, k))
+            r["NDCG"].append(ndcg_at_k(recommended, relevant, k))
+            r["ILD"].append(intra_list_diversity(list_positions, unit))
+            if p is not None: # calibration needs a history
+                r["CE"].append(calibration_error(p, list_positions, genres))
+
+            exposure[lam][list_positions] += 1 # for coverage and Gini
+
+    # one row per lambda
+    rows = []
+    for lam in lambdas:
+        r = results[lam]
+        rows.append({
+            "lambda": lam,
+            "Precision@10": np.mean(r["P"]),
+            "Recall@10": np.mean(r["R"]),
+            "NDCG@10": np.mean(r["NDCG"]),
+            "ILD": np.mean(r["ILD"]),
+            "Coverage": np.mean(exposure[lam] > 0),
+            "Gini": gini(exposure[lam]),
+            "Calibration error": np.mean(r["CE"]),
+            "Users": len(r["NDCG"]),
+        })
+    return pd.DataFrame(rows)
+
+pd.set_option("display.width", 200)
+genres, unit = genre_vectors(movies)
+
+# validation
+model = HybridRecommender(factors=BEST_FACTORS, regularization=BEST_REGULARIZATION,
+                          alpha=BEST_ALPHA, random_state=SEED,
+                          show_progress=False).fit(train, movies)
+val_results = evaluate_mmr(model, validation, train, genres, unit)
+print("\nMMR sweep on validation (lambda = 1.0 is the base hybrid)")
+print(val_results.round(4).to_string(index=False))
+
+# test
+fit_data = pd.concat([train, validation], ignore_index=True)
+model = HybridRecommender(factors=BEST_FACTORS, regularization=BEST_REGULARIZATION,
+                          alpha=BEST_ALPHA, random_state=SEED,
+                          show_progress=False).fit(fit_data, movies)
+test_results = evaluate_mmr(model, test, fit_data, genres, unit)
+print("\nMMR sweep on test (lambda = 1.0 is the base hybrid)")
+print(test_results.round(4).to_string(index=False))
+
+# accuracy-diversity frontier, saves the .png to results file
+fig, ax = plt.subplots(figsize=(7, 5))
+for res, name, marker in [(val_results, "validation", "o"), (test_results, "test", "s")]:
+    ax.plot(res["ILD"], res["NDCG@10"], marker=marker, label=name)
+    for _, row in res.iterrows():
+        ax.annotate(f"{row['lambda']:.1f}", (row["ILD"], row["NDCG@10"]),
+                    textcoords="offset points", xytext=(4, 4), fontsize=8)
+ax.set_xlabel("Intra-list diversity (mean cosine distance of genre vectors)")
+ax.set_ylabel("NDCG@10")
+ax.set_title("MMR accuracy-diversity frontier (labels = lambda)")
+ax.legend()
+ax.grid(alpha=0.3)
+fig.tight_layout()
+results_dir = Path(__file__).resolve().parent.parent / "results" # project root directory/results
+results_dir.mkdir(exist_ok=True)                                  
+
+plot_path = results_dir / "mmr_frontier.png"
+fig.savefig(plot_path, dpi=150)
+
+print(f"\nFrontier plot saved as {plot_path}")
